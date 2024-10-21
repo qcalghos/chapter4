@@ -2,10 +2,10 @@ use chapter4::configuration::get_configuration;
 use chapter4::startup::run;
 use sqlx::PgPool;
 use std::net::TcpListener;
+use env_logger::Env;
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    // let addr="127.0.0.1:8000";
-    // run(addr)?.await
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
     let configuration = get_configuration().expect("Failed to read configuration.");
     let connection_string = configuration.database.connection_string();
     //连接数据库
