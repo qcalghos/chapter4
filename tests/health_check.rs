@@ -1,13 +1,23 @@
 use chapter4::configuration::{get_configuration, DatabaseSettings};
 use chapter4::startup;
+use chapter4::telemetry;
+use once_cell::sync::Lazy;
+use secrecy::ExposeSecret;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
 use std::net::TcpListener;
 use uuid::Uuid;
+
+static TRACING:Lazy<()>=Lazy::new(||{
+    let subscriber = telemetry::get_subscriber("test".into(), "debug".into(),std::io::stdout);
+    telemetry::init_subscriber(subscriber);
+});
 pub struct TestApp {
     pub address: String,
     pub db_pool: PgPool,
 }
 async fn spawn_app() -> TestApp {
+    //添加日志处理
+    Lazy::force(&TRACING);
     let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind  random port");
     let port = listener.local_addr().unwrap().port();
     let mut configuration = get_configuration().expect("Failed to read configuration");
@@ -23,7 +33,7 @@ async fn spawn_app() -> TestApp {
 }
 async fn configure_database(config: &DatabaseSettings) -> PgPool {
     //不指定数据库名字连接数据库
-    let mut connection = PgConnection::connect(&config.connection_string_without_db())
+    let mut connection = PgConnection::connect(&config.connection_string_without_db().expose_secret())
         .await
         .expect("Failed to connect to Postgres");
     //创建数据库
@@ -32,8 +42,13 @@ async fn configure_database(config: &DatabaseSettings) -> PgPool {
         .await
         .expect("Failed to create database");
     //迁移数据库
-    let connection_pool=PgPool::connect(&config.connection_string()).await.expect("Failed to migrate the database");
-    sqlx::migrate!("./migrations").run(&connection_pool).await.expect("Failed to migrate the database");
+    let connection_pool = PgPool::connect(&config.connection_string().expose_secret())
+        .await
+        .expect("Failed to migrate the database");
+    sqlx::migrate!("./migrations")
+        .run(&connection_pool)
+        .await
+        .expect("Failed to migrate the database");
     connection_pool
 }
 #[tokio::test]
